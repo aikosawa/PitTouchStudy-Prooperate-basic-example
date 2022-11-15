@@ -15,6 +15,7 @@ import Procedure
 import Procedure.Program
 import Result.Extra
 import Task exposing (Task)
+import Time
 
 
 type Error
@@ -148,7 +149,7 @@ update msg model =
                     Result.Extra.unpack (ProOperateError >> OnError) OnTouch
             in
             ( { model | config = config }
-            , Touch.observe_pro2 config
+            , Touch.observeOnce_pro2 config
                 |> Procedure.try ProcMsg toMsg
             )
 
