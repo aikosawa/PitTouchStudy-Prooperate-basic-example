@@ -58,8 +58,6 @@ type alias Model =
     { procModel : Procedure.Program.Model Msg
     , config : Config_pro2
     , touch : Maybe TouchResponse
-    , time : Maybe Time.Posix
-    , zone : Maybe Time.Zone
     }
 
 
@@ -76,8 +74,6 @@ init _ =
     ( { procModel = Procedure.Program.init
       , config = defaultConfig_pro2
       , touch = Nothing
-      , time = Nothing
-      , zone = Nothing
       }
     , getProviderSettingCmd
     )
@@ -131,7 +127,12 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     let
         _ =
-            Debug.log "update:" msg
+            case msg of
+                ProcMsg _ ->
+                    msg
+
+                _ ->
+                    Debug.log "update:" msg
     in
     case msg of
         ProcMsg pMsg ->
@@ -142,23 +143,17 @@ update msg model =
             ( model, Cmd.none )
 
         OnTouch touch zone time ->
-            ( { model 
-                | touch = Just touch
-                , time = Just posix
-                , zone = Just zone 
-            }, Cmd.none )
+            ( { model | touch = Just touch }
+            , observeTouchCmd model.config
+            )
 
         GotSetting setting ->
             let
                 config =
                     configFromSetting setting
-
-                toMsg =
-                    Result.Extra.unpack (ProOperateError >> OnError) OnTouch
             in
             ( { model | config = config }
-            , Touch.observeOnce_pro2 config
-                |> Procedure.try ProcMsg toMsg
+            , observeTouchCmd config
             )
 
 
@@ -191,16 +186,16 @@ subscriptions model =
         ]
 
 
--- Command
-
-
-untilTouchCmd : Config_pro2 -> Cmd Msg
-untilTouchCmd config =
+{-| -}
+observeTouchCmd : Config_pro2 -> Cmd Msg
+observeTouchCmd config =
     let
-        andMap = Procedure.map2 (|>)
+        andMap =
+            Procedure.map2 (|>)
     in
     Procedure.provide OnTouch
-        |> andMap (ProOperate.untilTouch_pro2 config)
-        |> andMap Time.here
-        |> andMap Time.now
-        |> Procedure.try ProcMsg (Result.Extra.extract (OnError << ProOperateError))
+        |> andMap (Touch.observeOnce_pro2 config)
+        |> andMap (Procedure.fromTask Time.here)
+        |> andMap (Procedure.fromTask Time.now)
+        |> Procedure.try ProcMsg
+            (Result.Extra.extract (OnError << ProOperateError))
