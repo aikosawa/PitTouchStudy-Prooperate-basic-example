@@ -47,7 +47,7 @@ type Msg
     = ProcMsg (Procedure.Program.Msg Msg)
     | GotSetting Setting
     | OnError Error
-    | OnTouch TouchResponse
+    | OnTouch TouchResponse Time.Zone Time.Posix
 
 
 
@@ -58,6 +58,8 @@ type alias Model =
     { procModel : Procedure.Program.Model Msg
     , config : Config_pro2
     , touch : Maybe TouchResponse
+    , time : Maybe Time.Posix
+    , zone : Maybe Time.Zone
     }
 
 
@@ -74,6 +76,8 @@ init _ =
     ( { procModel = Procedure.Program.init
       , config = defaultConfig_pro2
       , touch = Nothing
+      , time = Nothing
+      , zone = Nothing
       }
     , getProviderSettingCmd
     )
@@ -137,8 +141,12 @@ update msg model =
         OnError err ->
             ( model, Cmd.none )
 
-        OnTouch touch ->
-            ( { model | touch = Just touch }, Cmd.none )
+        OnTouch touch zone time ->
+            ( { model 
+                | touch = Just touch
+                , time = Just posix
+                , zone = Just zone 
+            }, Cmd.none )
 
         GotSetting setting ->
             let
@@ -181,3 +189,18 @@ subscriptions model =
     Sub.batch
         [ Procedure.Program.subscriptions model.procModel
         ]
+
+
+-- Command
+
+
+untilTouchCmd : Config_pro2 -> Cmd Msg
+untilTouchCmd config =
+    let
+        andMap = Procedure.map2 (|>)
+    in
+    Procedure.provide OnTouch
+        |> andMap (ProOperate.untilTouch_pro2 config)
+        |> andMap Time.here
+        |> andMap Time.now
+        |> Procedure.try ProcMsg (Result.Extra.extract (OnError << ProOperateError))
