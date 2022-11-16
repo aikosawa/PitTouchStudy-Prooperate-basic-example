@@ -15,7 +15,9 @@ import ProOperate.Touch as Touch exposing (TouchResponse)
 import Procedure
 import Procedure.Program
 import Result.Extra
+import Maybe.Extra
 import Task exposing (Task)
+import Dict exposing (Dict)
 import Task.Extra
 import Time
 import Time.Format
@@ -64,6 +66,19 @@ type alias Model =
     , touch : Maybe TouchResponse
     , time : Maybe Time.Posix
     , zone : Maybe Time.Zone
+    , logs : List AccessLogs
+    }
+
+
+type alias AccessLogs =
+    { idm : String
+    , time : String
+    }
+
+
+userAccessLog =
+    { idm = ""
+    , time = ""
     }
 
 
@@ -82,6 +97,7 @@ init _ =
       , touch = Nothing
       , time = Nothing
       , zone = Nothing
+      , logs = []
       }
     , getProviderSettingCmd
     )
@@ -150,10 +166,30 @@ update msg model =
             ( model, Cmd.none )
 
         OnTouch touch zone posix ->
+            let
+                _= Debug.log "model:" model
+                _= Debug.log "touch:" touch
+                _= Debug.log "newLog:" newLog
+                _= Debug.log "date:" date
+
+                date : String
+                date = Maybe.map2 formatTime (Just zone) (Just posix)
+                    |> Maybe.withDefault ""
+
+                newLog : AccessLogs
+                newLog = { userAccessLog
+                            | idm = (Maybe.withDefault "" touch.idm)
+                            , time = date}
+
+                updateLogs : List AccessLogs
+                updateLogs = model.logs ++ [newLog]
+            in
+
             ( { model
                 | touch = Just touch
                 , time = Just posix
                 , zone = Just zone
+                , logs = updateLogs
                  }
             , observeTouchCmd model.config
             )
@@ -178,6 +214,8 @@ formatTime = Time.Format.format Time.Format.Config.Config_ja_jp.config "%Y-%m-%d
 view : Model -> Html Msg
 view model =
     let
+        _= Debug.log "logs:" model.logs
+
         label =
             Maybe.andThen .idm model.touch
                 |> Maybe.withDefault ""
@@ -191,9 +229,9 @@ view model =
             Maybe.andThen .data model.touch
 
         deposit =
-            Maybe.map2 (++) 
-                (Maybe.map (String.slice 22 24) data)
-                (Maybe.map (String.slice 20 22) data)
+            Just (++) 
+                |> Maybe.Extra.andMap (Maybe.map (String.slice 22 24) data)
+                |> Maybe.Extra.andMap (Maybe.map (String.slice 20 22) data)
                 |> Maybe.withDefault ""
                 |> Hex.fromString
                 |> Result.withDefault 0
