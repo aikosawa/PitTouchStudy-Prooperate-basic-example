@@ -6,6 +6,7 @@ import Html.Attributes exposing (id)
 import Http
 import Http.Tasks
 import Json.Decode as Json
+import Hex
 import Maybe exposing (Maybe)
 import ProOperate
 import ProOperate.Card as Card
@@ -15,7 +16,10 @@ import Procedure
 import Procedure.Program
 import Result.Extra
 import Task exposing (Task)
+import Task.Extra
 import Time
+import Time.Format
+import Time.Format.Config.Config_ja_jp
 
 
 type Error
@@ -58,6 +62,8 @@ type alias Model =
     { procModel : Procedure.Program.Model Msg
     , config : Config_pro2
     , touch : Maybe TouchResponse
+    , time : Maybe Time.Posix
+    , zone : Maybe Time.Zone
     }
 
 
@@ -74,6 +80,8 @@ init _ =
     ( { procModel = Procedure.Program.init
       , config = defaultConfig_pro2
       , touch = Nothing
+      , time = Nothing
+      , zone = Nothing
       }
     , getProviderSettingCmd
     )
@@ -119,7 +127,6 @@ configFromSetting setting =
         |> (\r -> { r | waitLamp = "WW1L" })
 
 
-
 -- UPDATE
 
 
@@ -142,8 +149,12 @@ update msg model =
         OnError err ->
             ( model, Cmd.none )
 
-        OnTouch touch zone time ->
-            ( { model | touch = Just touch }
+        OnTouch touch zone posix ->
+            ( { model
+                | touch = Just touch
+                , time = Just posix
+                , zone = Just zone
+                 }
             , observeTouchCmd model.config
             )
 
@@ -161,6 +172,9 @@ update msg model =
 -- VIEW
 
 
+formatTime : Time.Zone -> Time.Posix -> String
+formatTime = Time.Format.format Time.Format.Config.Config_ja_jp.config "%Y-%m-%d %H:%M:%S"
+
 view : Model -> Html Msg
 view model =
     let
@@ -168,10 +182,27 @@ view model =
             Maybe.andThen .idm model.touch
                 |> Maybe.withDefault ""
                 |> text
+
+        date = 
+            Maybe.map2 formatTime model.zone model.time
+            |> Maybe.withDefault ""
+
+        data =
+            Maybe.andThen .data model.touch
+
+        deposit =
+            Maybe.map2 (++) 
+                (Maybe.map (String.slice 22 24) data)
+                (Maybe.map (String.slice 20 22) data)
+                |> Maybe.withDefault ""
+                |> Hex.fromString
+                |> Result.withDefault 0
     in
     div [ id "body" ]
         [ div [] [ p [] [ text "Main" ] ]
         , div [] [ p [] [ label ] ]
+        , div [] [ p [] [ text <| "touch at " ++ date ]]
+        , div [] [ p [] [ (text << String.fromInt) deposit ]]
         ]
 
 
