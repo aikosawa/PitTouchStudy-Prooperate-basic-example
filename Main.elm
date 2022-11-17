@@ -1,4 +1,4 @@
-module Main exposing (TouchLog)
+module Main exposing (..)
 
 import Browser
 import Html exposing (Html, div, p, text)
@@ -7,6 +7,9 @@ import Http
 import Http.Tasks
 import Json.Decode as Json
 import Hex
+import Hex.Convert
+import Bytes
+import Bytes.Decode
 import Maybe exposing (Maybe)
 import ProOperate
 import ProOperate.Card as Card
@@ -69,21 +72,21 @@ type alias Model =
 
 type alias TouchLog =
     { idm : Maybe String
-    , time : Maybe Time.Posix
+    , posix : Maybe Time.Posix
     , zone : Maybe Time.Zone
     }
 
 
 userTouchLog =
     { idm = Nothing
-    , time = Nothing
+    , posix = Nothing
     , zone = Nothing
     }
 
 
 defaultTouchLog =
     { idm = Nothing
-    , time = Nothing
+    , posix = Nothing
     , zone = Nothing
     }
 
@@ -146,9 +149,6 @@ configFromSetting setting =
         |> (\r -> { r | waitLamp = "WW1L" })
 
 
-formatTime : Time.Zone -> Time.Posix -> String
-formatTime = Time.Format.format Time.Format.Config.Config_ja_jp.config "%Y-%m-%d %H:%M:%S"
-
 
 -- 入室、退室数計算
 
@@ -184,6 +184,17 @@ totalEntExiCount data =
  -}
 
 
+-- TouchLog 操作関数
+
+appendLog : List TouchLog -> List TouchLog -> List TouchLog
+appendLog logs touchLog = logs ++ touchLog
+
+getLastTouchLog : List TouchLog -> TouchLog
+getLastTouchLog logs = List.reverse logs
+                        |> List.head
+                        |> Maybe.withDefault defaultTouchLog
+
+
 
 -- UPDATE
 
@@ -210,27 +221,11 @@ update msg model =
             let
                 _= Debug.log "model:" model
                 _= Debug.log "touch:" touch
-                _= Debug.log "newLog:" newLog
-                _= Debug.log "date:" date
-
-                date : String
-                date = Maybe.map2 formatTime (Just zone) (Just posix)
-                    |> Maybe.withDefault ""
-
-                newLog : TouchLog
-                newLog = { userTouchLog
-                            | idm = touch.idm
-                            , time = Just posix
-                            , zone = Just zone
-                        }
-
-                updateLogs : List TouchLog
-                updateLogs = model.logs ++ [TouchLog touch.idm (Just posix) (Just zone)]
             in
 
             ( { model
                 | touch = Just touch
-                , logs = updateLogs
+                , logs = appendLog model.logs [TouchLog touch.idm (Just posix) (Just zone)]
                  }
             , observeTouchCmd model.config
             )
@@ -258,21 +253,38 @@ view model =
                 |> Maybe.withDefault ""
                 |> text
 
-        -- date = 
-        --     Maybe.map2 formatTime model.zone model.time
+        deposit =
+            model.touch
+                |> Maybe.andThen .data
+                |> Maybe.map (String.slice 20 24)
+                |> Maybe.andThen Hex.Convert.toBytes
+                |> Maybe.andThen (Bytes.Decode.decode (Bytes.Decode.unsignedInt16 Bytes.LE))
+                |> Maybe.withDefault 0
+
+        timeFormat : Time.Zone -> Time.Posix -> String
+        timeFormat = Time.Format.format Time.Format.Config.Config_ja_jp.config "%Y-%m-%d %H:%M:%S"
+
+        -- formattedTime : String
+        -- formattedTime  = 
+        --     Maybe.map2 timeFormat (getLastTouchLog model.logs).zone (getLastTouchLog model.logs).time
         --     |> Maybe.withDefault ""
 
-        data =
-            Maybe.andThen .data model.touch
-
-        deposit =
-            Just (++) 
-                |> Maybe.Extra.andMap (Maybe.map (String.slice 22 24) data)
-                |> Maybe.Extra.andMap (Maybe.map (String.slice 20 22) data)
+        formattedTime : List TouchLog -> String
+        formattedTime logs = 
+            Just Time.Format.format
+                |> Maybe.Extra.andMap (Just Time.Format.Config.Config_ja_jp.config)
+                |> Maybe.Extra.andMap (Just "%Y-%m-%d %H:%M:%S")
+                |> Maybe.Extra.andMap (getLastTouchLog logs).zone
+                |> Maybe.Extra.andMap (getLastTouchLog logs).posix
                 |> Maybe.withDefault ""
-                |> Hex.fromString
-                |> Result.withDefault 0
-        
+
+        -- formattedTime : List TouchLog -> String
+        -- formattedTime logs = 
+        --     Time.Format.format Time.Format.Config.Config_ja_jp.config "%Y-%m-%d %H:%M:%S"
+        --         |> (getLastTouchLog model.logs).zone
+        --         |> (getLastTouchLog model.logs).posix
+
+
         --EnterCount = 
             --groupEachIdm model.logs
                 -- |>
@@ -280,7 +292,7 @@ view model =
     div [ id "body" ]
         [ div [] [ p [] [ text "Main" ] ]
         , div [] [ p [] [ label ] ]
-        -- , div [] [ p [] [ text <| "touch at : " ++ date ]]
+        , div [] [ p [] [ text <| "touch at : " ++ formattedTime model.logs ]]
         , div [] [ p [] [ (text << String.fromInt) deposit ]]
         , div [] [ p [] [ text <| "Enter : " ]]
         ]
