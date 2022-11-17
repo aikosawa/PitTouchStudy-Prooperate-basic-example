@@ -1,4 +1,4 @@
-module Main exposing (AccessLog)
+module Main exposing (TouchLog)
 
 import Browser
 import Html exposing (Html, div, p, text)
@@ -63,25 +63,25 @@ type alias Model =
     { procModel : Procedure.Program.Model Msg
     , config : Config_pro2
     , touch : Maybe TouchResponse
-    , logs : List AccessLog
+    , logs : List TouchLog
     }
 
 
-type alias AccessLog =
+type alias TouchLog =
     { idm : Maybe String
     , time : Maybe Time.Posix
     , zone : Maybe Time.Zone
     }
 
 
-userAccessLog =
+userTouchLog =
     { idm = Nothing
     , time = Nothing
     , zone = Nothing
     }
 
 
-defaultAccessLog =
+defaultTouchLog =
     { idm = Nothing
     , time = Nothing
     , zone = Nothing
@@ -155,7 +155,7 @@ formatTime = Time.Format.format Time.Format.Config.Config_ja_jp.config "%Y-%m-%d
 takeLatestIdm data =
     List.reverse data
         |> List.head
-        |> Maybe.withDefault defaultAccessLog
+        |> Maybe.withDefault defaultTouchLog
         |> .idm
 
 
@@ -163,7 +163,7 @@ groupEachIdm data =
     Dict.Extra.groupBy .idm data
         |> Dict.map (\_ v -> List.length v )
 {-| 
-@docs Dict [(idm, [{userAccessLog}])]
+@docs Dict [(idm, [{userTouchLog}])]
 @docs Dict [(idm, dataLength)]
 -}
         
@@ -217,15 +217,15 @@ update msg model =
                 date = Maybe.map2 formatTime (Just zone) (Just posix)
                     |> Maybe.withDefault ""
 
-                newLog : AccessLog
-                newLog = { userAccessLog
+                newLog : TouchLog
+                newLog = { userTouchLog
                             | idm = touch.idm
                             , time = Just posix
                             , zone = Just zone
                         }
 
-                updateLogs : List AccessLog
-                updateLogs = model.logs ++ [AccessLog touch.idm (Just posix) (Just zone)]
+                updateLogs : List TouchLog
+                updateLogs = model.logs ++ [TouchLog touch.idm (Just posix) (Just zone)]
             in
 
             ( { model
