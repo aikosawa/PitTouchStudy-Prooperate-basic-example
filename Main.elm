@@ -1,4 +1,4 @@
-module Main exposing (..)
+module Main exposing (AccessLog)
 
 import Browser
 import Html exposing (Html, div, p, text)
@@ -18,6 +18,7 @@ import Result.Extra
 import Maybe.Extra
 import Task exposing (Task)
 import Dict exposing (Dict)
+import Dict.Extra
 import Task.Extra
 import Time
 import Time.Format
@@ -37,7 +38,6 @@ type alias Setting =
 
 
 -- MAIN
-
 
 main : Program Flags Model Msg
 main =
@@ -59,26 +59,32 @@ type Msg
 
 -- Application Model
 
-
 type alias Model =
     { procModel : Procedure.Program.Model Msg
     , config : Config_pro2
     , touch : Maybe TouchResponse
-    , time : Maybe Time.Posix
-    , zone : Maybe Time.Zone
-    , logs : List AccessLogs
+    , logs : List AccessLog
     }
 
 
-type alias AccessLogs =
-    { idm : String
-    , time : String
+type alias AccessLog =
+    { idm : Maybe String
+    , time : Maybe Time.Posix
+    , zone : Maybe Time.Zone
     }
 
 
 userAccessLog =
-    { idm = ""
-    , time = ""
+    { idm = Nothing
+    , time = Nothing
+    , zone = Nothing
+    }
+
+
+defaultAccessLog =
+    { idm = Nothing
+    , time = Nothing
+    , zone = Nothing
     }
 
 
@@ -89,14 +95,11 @@ type alias Flags =
 
 -- FUNCTIONS
 
-
 init : Flags -> ( Model, Cmd Msg )
 init _ =
     ( { procModel = Procedure.Program.init
       , config = defaultConfig_pro2
       , touch = Nothing
-      , time = Nothing
-      , zone = Nothing
       , logs = []
       }
     , getProviderSettingCmd
@@ -143,8 +146,46 @@ configFromSetting setting =
         |> (\r -> { r | waitLamp = "WW1L" })
 
 
--- UPDATE
+formatTime : Time.Zone -> Time.Posix -> String
+formatTime = Time.Format.format Time.Format.Config.Config_ja_jp.config "%Y-%m-%d %H:%M:%S"
 
+
+-- 入室、退室数計算
+
+takeLatestIdm data =
+    List.reverse data
+        |> List.head
+        |> Maybe.withDefault defaultAccessLog
+        |> .idm
+
+
+groupEachIdm data =
+    Dict.Extra.groupBy .idm data
+        |> Dict.map (\_ v -> List.length v )
+{-| 
+@docs Dict [(idm, [{userAccessLog}])]
+@docs Dict [(idm, dataLength)]
+-}
+        
+transformToCounts data =
+    Dict.map (\_ v -> (( v + 1 )//2, v//2)) data
+{-| 入退室カウント取得
+@docs Dict [(idm, (入室回数, 退室回数))]
+ -}
+
+totalEntExiCount data =
+    Dict.values data
+        |> List.unzip
+        |> Tuple.mapBoth List.sum List.sum
+{-|
+@docs [(入室回数, 退室回数)]
+@docs ([入室回数], [退室回数])
+@docs (入室総数, 退室総数)
+ -}
+
+
+
+-- UPDATE
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
@@ -176,19 +217,19 @@ update msg model =
                 date = Maybe.map2 formatTime (Just zone) (Just posix)
                     |> Maybe.withDefault ""
 
-                newLog : AccessLogs
+                newLog : AccessLog
                 newLog = { userAccessLog
-                            | idm = (Maybe.withDefault "" touch.idm)
-                            , time = date}
+                            | idm = touch.idm
+                            , time = Just posix
+                            , zone = Just zone
+                        }
 
-                updateLogs : List AccessLogs
-                updateLogs = model.logs ++ [newLog]
+                updateLogs : List AccessLog
+                updateLogs = model.logs ++ [AccessLog touch.idm (Just posix) (Just zone)]
             in
 
             ( { model
                 | touch = Just touch
-                , time = Just posix
-                , zone = Just zone
                 , logs = updateLogs
                  }
             , observeTouchCmd model.config
@@ -207,10 +248,6 @@ update msg model =
 
 -- VIEW
 
-
-formatTime : Time.Zone -> Time.Posix -> String
-formatTime = Time.Format.format Time.Format.Config.Config_ja_jp.config "%Y-%m-%d %H:%M:%S"
-
 view : Model -> Html Msg
 view model =
     let
@@ -221,9 +258,9 @@ view model =
                 |> Maybe.withDefault ""
                 |> text
 
-        date = 
-            Maybe.map2 formatTime model.zone model.time
-            |> Maybe.withDefault ""
+        -- date = 
+        --     Maybe.map2 formatTime model.zone model.time
+        --     |> Maybe.withDefault ""
 
         data =
             Maybe.andThen .data model.touch
@@ -235,18 +272,22 @@ view model =
                 |> Maybe.withDefault ""
                 |> Hex.fromString
                 |> Result.withDefault 0
+        
+        --EnterCount = 
+            --groupEachIdm model.logs
+                -- |>
     in
     div [ id "body" ]
         [ div [] [ p [] [ text "Main" ] ]
         , div [] [ p [] [ label ] ]
-        , div [] [ p [] [ text <| "touch at " ++ date ]]
+        -- , div [] [ p [] [ text <| "touch at : " ++ date ]]
         , div [] [ p [] [ (text << String.fromInt) deposit ]]
+        , div [] [ p [] [ text <| "Enter : " ]]
         ]
 
 
 
 -- SUBSCRIPTIONS
-
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
