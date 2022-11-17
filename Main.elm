@@ -261,14 +261,6 @@ view model =
                 |> Maybe.andThen (Bytes.Decode.decode (Bytes.Decode.unsignedInt16 Bytes.LE))
                 |> Maybe.withDefault 0
 
-        timeFormat : Time.Zone -> Time.Posix -> String
-        timeFormat = Time.Format.format Time.Format.Config.Config_ja_jp.config "%Y-%m-%d %H:%M:%S"
-
-        -- formattedTime : String
-        -- formattedTime  = 
-        --     Maybe.map2 timeFormat (getLastTouchLog model.logs).zone (getLastTouchLog model.logs).time
-        --     |> Maybe.withDefault ""
-
         formattedTime : List TouchLog -> String
         formattedTime logs = 
             Just Time.Format.format
@@ -277,13 +269,6 @@ view model =
                 |> Maybe.Extra.andMap (getLastTouchLog logs).zone
                 |> Maybe.Extra.andMap (getLastTouchLog logs).posix
                 |> Maybe.withDefault ""
-
-        -- formattedTime : List TouchLog -> String
-        -- formattedTime logs = 
-        --     Time.Format.format Time.Format.Config.Config_ja_jp.config "%Y-%m-%d %H:%M:%S"
-        --         |> (getLastTouchLog model.logs).zone
-        --         |> (getLastTouchLog model.logs).posix
-
 
         --EnterCount = 
             --groupEachIdm model.logs
