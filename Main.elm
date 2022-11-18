@@ -1,7 +1,7 @@
 module Main exposing (..)
 
 import Browser
-import Html exposing (Html, div, p, text)
+import Html exposing (Html, div, p, text, ul, li)
 import Html.Attributes exposing (id)
 import Http
 import Http.Tasks
@@ -71,21 +71,21 @@ type alias Model =
 
 
 type alias TouchLog =
-    { idm : Maybe String
+    { idm : String
     , posix : Maybe Time.Posix
     , zone : Maybe Time.Zone
     }
 
 
 userTouchLog =
-    { idm = Nothing
+    { idm = ""
     , posix = Nothing
     , zone = Nothing
     }
 
 
 defaultTouchLog =
-    { idm = Nothing
+    { idm = ""
     , posix = Nothing
     , zone = Nothing
     }
@@ -152,16 +152,9 @@ configFromSetting setting =
 
 -- 入室、退室数計算
 
--- getLatestIdm : List TouchLog -> String
--- getLatestIdm data =
---     List.reverse data
---         |> List.head
---         |> Maybe.withDefault defaultTouchLog
---         |> .idm
-
 -- groupEachIdm : List TouchLog -> Dict String Int
 groupEachIdm data =
-    Dict.Extra.filterGroupBy .idm data
+    Dict.Extra.groupBy .idm data
         |> Dict.map (\_ v -> List.length v )
 {-| 
 @docs Dict [(idm, [{userTouchLog}])]
@@ -186,20 +179,19 @@ totalEntExiCount data =
  -}
 
 
+
 -- TouchLog 操作関数
 
 appendLog : List TouchLog -> List TouchLog -> List TouchLog
-appendLog logs touchLog = logs ++ touchLog
+appendLog logs touchLog = 
+    logs ++ touchLog
 
 -- getLastTouchLog : List TouchLog -> TouchLog
-getLastTouchLog logs = List.reverse logs
-                        |> List.head
-                        |> Maybe.withDefault defaultTouchLog
+getLastTouchLog logs = 
+    List.reverse logs
+        |> List.head
+        |> Maybe.withDefault defaultTouchLog
 
-getLatestIdm data =
-    getLastTouchLog data
-        |> .idm
-        |> Maybe.withDefault ""
 
 
 
@@ -232,7 +224,7 @@ update msg model =
 
             ( { model
                 | touch = Just touch
-                , logs = appendLog model.logs [TouchLog touch.idm (Just posix) (Just zone)]
+                , logs = appendLog model.logs [TouchLog (Maybe.withDefault "" touch.idm) (Just posix) (Just zone)]
                  }
             , observeTouchCmd model.config
             )
@@ -281,7 +273,7 @@ view model =
         entryTimes logs = 
             groupEachIdm logs
                 |> transformToCounts
-                |> Dict.get (Maybe.withDefault "" ((getLastTouchLog logs).idm))
+                |> Dict.get (getLastTouchLog logs).idm
                 |> Maybe.map Tuple.first
                 |> Maybe.withDefault 0
                 |> String.fromInt
@@ -290,7 +282,7 @@ view model =
         exitTimes logs =
             groupEachIdm logs
                 |> transformToCounts
-                |> Dict.get (Maybe.withDefault "" ((getLastTouchLog logs).idm))
+                |> Dict.get (getLastTouchLog logs).idm
                 |> Maybe.map Tuple.second
                 |> Maybe.withDefault 0
                 |> String.fromInt
@@ -298,20 +290,51 @@ view model =
         totalTouchCounts : List TouchLog -> String
         totalTouchCounts  logs =
             groupEachIdm logs
-                |> Dict.get (Maybe.withDefault "" ((getLastTouchLog logs).idm))
+                |> Dict.get (getLastTouchLog logs).idm
                 |> Maybe.withDefault 0
                 |> String.fromInt
+
+        entredNumbers : List TouchLog -> String
+        entredNumbers logs =
+            groupEachIdm logs
+                |> transformToCounts
+                |> totalEntExiCount
+                |> Tuple.first
+                |> String.fromInt
+
+        exitedNumbers : List TouchLog -> String
+        exitedNumbers logs =
+            groupEachIdm logs
+                |> transformToCounts
+                |> totalEntExiCount
+                |> Tuple.second
+                |> String.fromInt
+        
+        viewTouchLog : TouchLog -> Html msg
+        viewTouchLog log =
+            let
+                time = 
+                    Just Time.Format.format
+                        |> Maybe.Extra.andMap (Just Time.Format.Config.Config_ja_jp.config)
+                        |> Maybe.Extra.andMap (Just "%Y-%m-%d %H:%M:%S")
+                        |> Maybe.Extra.andMap log.zone
+                        |> Maybe.Extra.andMap log.posix
+                        |> Maybe.withDefault ""
+            in
+            li [] [ text <| "IDM : " ++ log.idm ++ " TIME : " ++ time ]
     in
     div [ id "body" ]
         [ div [] [ p [] [ text "Main" ] ]
         , div [] [ p [] [ label ] ]
         , div [] [ p [] [ text <| "touch at : " ++ formattedTime model.logs ]]
         , div [] [ p [] [ (text << String.fromInt) deposit ]]
-        , div [] [ p [] [ 
-                        text <| "Enter : " ++ entryTimes model.logs ++ " times "
+        , div [] [ p [] [ text <| "Enter : " ++ entryTimes model.logs ++ " times "
                         , text <| "Exit : " ++ exitTimes model.logs ++ " times "
                         , text <| "Total Counts : " ++ totalTouchCounts model.logs ++ " times "
                         ]]
+        , div [] [ p [] [ text <| "Entred Numbers : " ++ entredNumbers model.logs ++ " times "
+                        , text <| "Exited Numbers : " ++ exitedNumbers model.logs ++ " times "]]
+        , div [] [ ul [] ( List.map viewTouchLog model.logs)] 
         ]
 
 
