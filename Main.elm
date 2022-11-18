@@ -152,21 +152,23 @@ configFromSetting setting =
 
 -- 入室、退室数計算
 
-takeLatestIdm data =
-    List.reverse data
-        |> List.head
-        |> Maybe.withDefault defaultTouchLog
-        |> .idm
+-- getLatestIdm : List TouchLog -> String
+-- getLatestIdm data =
+--     List.reverse data
+--         |> List.head
+--         |> Maybe.withDefault defaultTouchLog
+--         |> .idm
 
-
+-- groupEachIdm : List TouchLog -> Dict String Int
 groupEachIdm data =
-    Dict.Extra.groupBy .idm data
+    Dict.Extra.filterGroupBy .idm data
         |> Dict.map (\_ v -> List.length v )
 {-| 
 @docs Dict [(idm, [{userTouchLog}])]
 @docs Dict [(idm, dataLength)]
 -}
-        
+
+-- transformToCounts : Dict String Int -> List (String, (Int, Int))      
 transformToCounts data =
     Dict.map (\_ v -> (( v + 1 )//2, v//2)) data
 {-| 入退室カウント取得
@@ -189,10 +191,15 @@ totalEntExiCount data =
 appendLog : List TouchLog -> List TouchLog -> List TouchLog
 appendLog logs touchLog = logs ++ touchLog
 
-getLastTouchLog : List TouchLog -> TouchLog
+-- getLastTouchLog : List TouchLog -> TouchLog
 getLastTouchLog logs = List.reverse logs
                         |> List.head
                         |> Maybe.withDefault defaultTouchLog
+
+getLatestIdm data =
+    getLastTouchLog data
+        |> .idm
+        |> Maybe.withDefault ""
 
 
 
@@ -270,16 +277,41 @@ view model =
                 |> Maybe.Extra.andMap (getLastTouchLog logs).posix
                 |> Maybe.withDefault ""
 
-        --EnterCount = 
-            --groupEachIdm model.logs
-                -- |>
+        entryTimes : List TouchLog -> String
+        entryTimes logs = 
+            groupEachIdm logs
+                |> transformToCounts
+                |> Dict.get (Maybe.withDefault "" ((getLastTouchLog logs).idm))
+                |> Maybe.map Tuple.first
+                |> Maybe.withDefault 0
+                |> String.fromInt
+
+        exitTimes : List TouchLog -> String
+        exitTimes logs =
+            groupEachIdm logs
+                |> transformToCounts
+                |> Dict.get (Maybe.withDefault "" ((getLastTouchLog logs).idm))
+                |> Maybe.map Tuple.second
+                |> Maybe.withDefault 0
+                |> String.fromInt
+
+        totalTouchCounts : List TouchLog -> String
+        totalTouchCounts  logs =
+            groupEachIdm logs
+                |> Dict.get (Maybe.withDefault "" ((getLastTouchLog logs).idm))
+                |> Maybe.withDefault 0
+                |> String.fromInt
     in
     div [ id "body" ]
         [ div [] [ p [] [ text "Main" ] ]
         , div [] [ p [] [ label ] ]
         , div [] [ p [] [ text <| "touch at : " ++ formattedTime model.logs ]]
         , div [] [ p [] [ (text << String.fromInt) deposit ]]
-        , div [] [ p [] [ text <| "Enter : " ]]
+        , div [] [ p [] [ 
+                        text <| "Enter : " ++ entryTimes model.logs ++ " times "
+                        , text <| "Exit : " ++ exitTimes model.logs ++ " times "
+                        , text <| "Total Counts : " ++ totalTouchCounts model.logs ++ " times "
+                        ]]
         ]
 
 
