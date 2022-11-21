@@ -288,7 +288,7 @@ view model =
                 |> String.fromInt
 
         totalTouchCounts : List TouchLog -> String
-        totalTouchCounts  logs =
+        totalTouchCounts logs =
             groupEachIdm logs
                 |> Dict.get (getLastTouchLog logs).idm
                 |> Maybe.withDefault 0
@@ -322,6 +322,20 @@ view model =
                         |> Maybe.withDefault ""
             in
             li [] [ text <| "IDM : " ++ log.idm ++ " TIME : " ++ time ]
+
+        lastFiveEnteredPeople : List TouchLog -> List String
+        lastFiveEnteredPeople logs =
+            List.reverse logs
+                |> groupEachIdm
+                |> Dict.toList
+                |> List.take 4
+                |> List.unzip
+                |> Tuple.first
+
+        viewLastFiveEnteredPeople : String -> Html msg
+        viewLastFiveEnteredPeople log =
+            li [] [ text <| "IDM : " ++ log ]
+
     in
     div [ id "body" ]
         [ div [] [ p [] [ text "Main" ] ]
@@ -334,7 +348,8 @@ view model =
                         ]]
         , div [] [ p [] [ text <| "Entred Numbers : " ++ entredNumbers model.logs ++ " times "
                         , text <| "Exited Numbers : " ++ exitedNumbers model.logs ++ " times "]]
-        , div [] [ ul [] ( List.map viewTouchLog model.logs)] 
+        -- , div [] [ ul [] ( List.map viewTouchLog model.logs)]
+        , div [] [ ul [] ( List.map viewLastFiveEnteredPeople (lastFiveEnteredPeople model.logs)) ]
         ]
 
 
