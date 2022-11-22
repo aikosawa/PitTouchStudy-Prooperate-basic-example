@@ -182,9 +182,9 @@ totalEntExiCount data =
 
 -- TouchLog 操作関数
 
-appendLog : List TouchLog -> List TouchLog -> List TouchLog
-appendLog logs touchLog = 
-    logs ++ touchLog
+appendLog : TouchLog -> List TouchLog -> List TouchLog
+appendLog touchLog logs = 
+    touchLog :: logs
 
 -- getLastTouchLog : List TouchLog -> TouchLog
 getLastTouchLog logs = 
@@ -224,7 +224,7 @@ update msg model =
 
             ( { model
                 | touch = Just touch
-                , logs = appendLog model.logs [TouchLog (Maybe.withDefault "" touch.idm) (Just posix) (Just zone)]
+                , logs = appendLog (TouchLog (Maybe.withDefault "" touch.idm) (Just posix) (Just zone)) model.logs
                  }
             , observeTouchCmd model.config
             )
