@@ -188,10 +188,33 @@ appendLog touchLog logs =
 
 -- getLastTouchLog : List TouchLog -> TouchLog
 getLastTouchLog logs = 
-    List.reverse logs
-        |> List.head
+    List.head logs
         |> Maybe.withDefault defaultTouchLog
 
+checkTenSec : Time.Posix -> List TouchLog -> Bool
+checkTenSec posix logs =
+    let
+        lastPosixInInt =
+            Just Time.posixToMillis
+                |> Maybe.Extra.andMap ((getLastTouchLog logs).posix)
+                |> Maybe.withDefault 0
+        
+        posixInInt =
+            Time.posixToMillis posix
+        
+        checkDifferenceOfPosix =
+            posixInInt - lastPosixInInt
+    in
+    if checkDifferenceOfPosix > 10000 then True else False
+
+checkIdm : Maybe String -> Bool
+checkIdm idm =
+    case idm of
+        Nothing ->
+            False
+        
+        _ ->
+            True
 
 
 
@@ -220,6 +243,18 @@ update msg model =
             let
                 _= Debug.log "model:" model
                 _= Debug.log "touch:" touch
+
+                -- checkIdmErr : 
+                -- checkIdmErr idm =
+                --     idm
+                --         |> Maybe.map (<- TouchLog)
+                --         |> Maybe.map (List TouchLog)
+                --         |> Maybe.withDefault model.log
+
+                -- checkTenSec :
+                -- checkTenSec posix =
+                
+                    
             in
 
             ( { model
