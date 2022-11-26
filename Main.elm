@@ -182,8 +182,8 @@ totalEntExiCount data =
 
 -- TouchLog 操作関数
 
-appendLog : TouchLog -> List TouchLog -> List TouchLog
-appendLog touchLog logs = 
+appendLog : List TouchLog -> TouchLog -> List TouchLog
+appendLog logs touchLog = 
     touchLog :: logs
 
 -- getLastTouchLog : List TouchLog -> TouchLog
@@ -191,30 +191,30 @@ getLastTouchLog logs =
     List.head logs
         |> Maybe.withDefault defaultTouchLog
 
-checkTenSec : Time.Posix -> List TouchLog -> Bool
-checkTenSec posix logs =
-    let
-        lastPosixInInt =
-            Just Time.posixToMillis
-                |> Maybe.Extra.andMap ((getLastTouchLog logs).posix)
-                |> Maybe.withDefault 0
+-- checkTenSec : Time.Posix -> List TouchLog -> Bool
+-- checkTenSec logs posix =
+--     let
+--         lastMillisecond =
+--             Just Time.posixToMillis
+--                 |> Maybe.Extra.andMap ((getLastTouchLog logs).posix)
+--                 |> Maybe.withDefault 0
         
-        posixInInt =
-            Time.posixToMillis posix
+--         posixInInt =
+--             Time.posixToMillis posix
         
-        checkDifferenceOfPosix =
-            posixInInt - lastPosixInInt
-    in
-    if checkDifferenceOfPosix > 10000 then True else False
+--         checkDifferenceOfPosix =
+--             posixInInt - lastMillisecond
+--     in
+--     if checkDifferenceOfPosix > 10000 then True else False
 
-checkIdm : Maybe String -> Bool
-checkIdm idm =
-    case idm of
-        Nothing ->
-            False
+-- checkIdm : Maybe String -> Bool
+-- checkIdm idm =
+--     case idm of
+--         Nothing ->
+--             False
         
-        _ ->
-            True
+--         _ ->
+--             True
 
 
 
@@ -244,22 +244,48 @@ update msg model =
                 _= Debug.log "model:" model
                 _= Debug.log "touch:" touch
 
-                -- checkIdmErr : 
-                -- checkIdmErr idm =
-                --     idm
-                --         |> Maybe.map (<- TouchLog)
-                --         |> Maybe.map (List TouchLog)
-                --         |> Maybe.withDefault model.log
+                -- checkIdmErr =
+                    -- let
+                    --     idmCheck =
+                    --         checkIdm idm
 
-                -- checkTenSec :
-                -- checkTenSec posix =
-                
+                    --     tenSecCheck =
+                    --         checkTenSec logs posixcheck
+
+                    -- in
+                    -- case (idmCheck, tenSecCheck) of
+                    --     (True, True) ->
+                    --         appendLog (TouchLog (Maybe.withDefault "" idm) posixcheck zonecheck) logs
+                    
+                    -- Just TouchLog
+                    --     |> Maybe.Extra.andMap touch.idm
+                    --     |> Maybe.Extra.andMap (Just posix)
+                    --     |> Maybe.Extra.andMap (Just zone)
+                    --     |> Maybe.map (appendLog model.logs)
+                    --     |> Maybe.withDefault model.logs
+
+                    -- Maybe.map3 TouchLog touch.idm (Just posix) (Just zone)
+                    --     |> Maybe.map (appendLog model.logs)
+                    --     |> Maybe.withDefault model.logs
+                    
+                -- cleanData idm =
+                --     Maybe.map3 TouchLog touch.idm (Just (Just posix)) (Just (Just zone))
+                --     |> Maybe.map (appendLog model.logs)
+                --     |> Maybe.withDefault model.logs
+
+
                     
             in
 
             ( { model
                 | touch = Just touch
-                , logs = appendLog (TouchLog (Maybe.withDefault "" touch.idm) (Just posix) (Just zone)) model.logs
+                , logs = 
+                    Just TouchLog
+                        |> Maybe.Extra.andMap touch.idm
+                        |> Maybe.Extra.andMap (Just(Just posix))
+                        |> Maybe.Extra.andMap (Just(Just zone))
+                        |> Maybe.map (appendLog model.logs)
+                        |> Maybe.withDefault model.logs
                  }
             , observeTouchCmd model.config
             )
