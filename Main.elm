@@ -191,21 +191,21 @@ getLastTouchLog logs =
     List.head logs
         |> Maybe.withDefault defaultTouchLog
 
--- checkTenSec : Time.Posix -> List TouchLog -> Bool
--- checkTenSec logs posix =
---     let
---         lastMillisecond =
---             Just Time.posixToMillis
---                 |> Maybe.Extra.andMap ((getLastTouchLog logs).posix)
---                 |> Maybe.withDefault 0
+checkTenSec : Time.Posix -> List TouchLog -> Maybe Time.Posix
+checkTenSec posix logs =
+    let
+        lastMillisecond =
+            Just Time.posixToMillis
+                |> Maybe.Extra.andMap ((getLastTouchLog logs).posix)
+                |> Maybe.withDefault 0
         
---         posixInInt =
---             Time.posixToMillis posix
+        posixInInt =
+            Time.posixToMillis posix
         
---         checkDifferenceOfPosix =
---             posixInInt - lastMillisecond
---     in
---     if checkDifferenceOfPosix > 10000 then True else False
+        checkDifferenceOfPosix =
+            lastMillisecond - posixInInt
+    in
+    if checkDifferenceOfPosix > 10000 then (Just posix) else Nothing
 
 -- checkIdm : Maybe String -> Bool
 -- checkIdm idm =
@@ -244,48 +244,31 @@ update msg model =
                 _= Debug.log "model:" model
                 _= Debug.log "touch:" touch
 
-                -- checkIdmErr =
-                    -- let
-                    --     idmCheck =
-                    --         checkIdm idm
+                -- cleanData =
+                --     Maybe.map3 TouchLog touch.idm (Just (checkTenSec posix model.logs)) (Just(Just zone))
+                --         |> Maybe.map (appendLog model.logs)
+                --         |> Maybe.withDefault model.logs
 
-                    --     tenSecCheck =
-                    --         checkTenSec logs posixcheck
-
-                    -- in
-                    -- case (idmCheck, tenSecCheck) of
-                    --     (True, True) ->
-                    --         appendLog (TouchLog (Maybe.withDefault "" idm) posixcheck zonecheck) logs
-                    
                     -- Just TouchLog
                     --     |> Maybe.Extra.andMap touch.idm
-                    --     |> Maybe.Extra.andMap (Just posix)
-                    --     |> Maybe.Extra.andMap (Just zone)
+                    --     |> Maybe.Extra.andMap Maybe.andThen (checkTenSec posix )
+                    --     |> Maybe.Extra.andMap (Just(Just zone))
                     --     |> Maybe.map (appendLog model.logs)
                     --     |> Maybe.withDefault model.logs
 
-                    -- Maybe.map3 TouchLog touch.idm (Just posix) (Just zone)
-                    --     |> Maybe.map (appendLog model.logs)
-                    --     |> Maybe.withDefault model.logs
-                    
-                -- cleanData idm =
-                --     Maybe.map3 TouchLog touch.idm (Just (Just posix)) (Just (Just zone))
-                --     |> Maybe.map (appendLog model.logs)
-                --     |> Maybe.withDefault model.logs
-
-
-                    
+                -- Maybe.map (\a -> TouchLog a (Just posix) (Just zone)) touch.idm
+                --         |> Maybe.withDefault defaultTouchLog
+                --         |> appendLog model.logs
+                newTouchLog : String -> Time.Posix -> Time.Zone -> TouchLog
+                newTouchLog idm newPosix newZone = 
+                    TouchLog idm (Just newPosix) (Just newZone)    
             in
 
             ( { model
                 | touch = Just touch
-                , logs = 
-                    Just TouchLog
-                        |> Maybe.Extra.andMap touch.idm
-                        |> Maybe.Extra.andMap (Just(Just posix))
-                        |> Maybe.Extra.andMap (Just(Just zone))
-                        |> Maybe.map (appendLog model.logs)
-                        |> Maybe.withDefault model.logs
+                , logs =
+                    appendLog model.logs (Maybe.withDefault defaultTouchLog (Maybe.map3 newTouchLog touch.idm (Just posix) (Just zone)))
+                     
                  }
             , observeTouchCmd model.config
             )
