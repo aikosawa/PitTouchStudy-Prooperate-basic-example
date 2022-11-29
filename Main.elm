@@ -23,6 +23,7 @@ import Task exposing (Task)
 import Dict exposing (Dict)
 import Dict.Extra
 import Task.Extra
+import List.Extra
 import Time
 import Time.Format
 import Time.Format.Config.Config_ja_jp
@@ -191,30 +192,46 @@ getLastTouchLog logs =
     List.head logs
         |> Maybe.withDefault defaultTouchLog
 
-checkTenSec : Time.Posix -> List TouchLog -> Maybe Time.Posix
-checkTenSec posix logs =
-    let
-        lastMillisecond =
-            Just Time.posixToMillis
-                |> Maybe.Extra.andMap ((getLastTouchLog logs).posix)
-                |> Maybe.withDefault 0
+checkTenSec : Time.Posix -> Maybe String -> List TouchLog -> Maybe Time.Posix
+checkTenSec posix maybeIdm logs =
+    case logs of
+        [] ->
+            Just posix
         
-        posixInInt =
-            Time.posixToMillis posix
-        
-        checkDifferenceOfPosix =
-            lastMillisecond - posixInInt
-    in
-    if checkDifferenceOfPosix > 10000 then (Just posix) else Nothing
+        _ ->
+            let
+                idm =
+                    Maybe.withDefault "" maybeIdm
 
--- checkIdm : Maybe String -> Bool
--- checkIdm idm =
---     case idm of
---         Nothing ->
---             False
-        
---         _ ->
---             True
+                lastTouchLogIndex = 
+                    List.Extra.elemIndex idm (List.map .idm logs)
+                        |> Maybe.withDefault 0
+
+                lastTouchLog =
+                    List.Extra.getAt lastTouchLogIndex logs
+                        |> Maybe.withDefault defaultTouchLog
+
+                lastMillisecond =
+                    Just Time.posixToMillis
+                        |> Maybe.Extra.andMap lastTouchLog.posix
+                        |> Maybe.withDefault 0
+                
+                posixInInt =
+                    Time.posixToMillis posix
+                
+                checkDifferenceOfPosix =
+                    lastMillisecond - posixInInt
+
+                _ =
+                    Debug.log "lastMillisecond" lastMillisecond
+
+                _ =
+                    Debug.log "posixInInt" posixInInt
+
+                _ =
+                    Debug.log "checkDifferenceOfPosix" checkDifferenceOfPosix
+            in
+            if checkDifferenceOfPosix > 0 then (Just posix) else Nothing
 
 
 
@@ -243,31 +260,22 @@ update msg model =
             let
                 _= Debug.log "model:" model
                 _= Debug.log "touch:" touch
-
-                -- cleanData =
-                --     Maybe.map3 TouchLog touch.idm (Just (checkTenSec posix model.logs)) (Just(Just zone))
-                --         |> Maybe.map (appendLog model.logs)
-                --         |> Maybe.withDefault model.logs
-
-                    -- Just TouchLog
-                    --     |> Maybe.Extra.andMap touch.idm
-                    --     |> Maybe.Extra.andMap Maybe.andThen (checkTenSec posix )
-                    --     |> Maybe.Extra.andMap (Just(Just zone))
-                    --     |> Maybe.map (appendLog model.logs)
-                    --     |> Maybe.withDefault model.logs
-
-                -- Maybe.map (\a -> TouchLog a (Just posix) (Just zone)) touch.idm
-                --         |> Maybe.withDefault defaultTouchLog
-                --         |> appendLog model.logs
+                
                 newTouchLog : String -> Time.Posix -> Time.Zone -> TouchLog
                 newTouchLog idm newPosix newZone = 
-                    TouchLog idm (Just newPosix) (Just newZone)    
+                    TouchLog idm (Just newPosix) (Just newZone)
             in
 
             ( { model
                 | touch = Just touch
                 , logs =
-                    appendLog model.logs (Maybe.withDefault defaultTouchLog (Maybe.map3 newTouchLog touch.idm (Just posix) (Just zone)))
+                    Just newTouchLog
+                        |> Maybe.Extra.andMap touch.idm
+                        |> Maybe.Extra.andMap (checkTenSec posix touch.idm model.logs )
+                        |> Maybe.Extra.andMap (Just zone)
+                        |> Maybe.map (appendLog model.logs)
+                        |> Maybe.withDefault model.logs
+                    
                      
                  }
             , observeTouchCmd model.config
