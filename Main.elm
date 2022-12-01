@@ -192,46 +192,23 @@ getLastTouchLog logs =
     List.head logs
         |> Maybe.withDefault defaultTouchLog
 
-checkTenSec : Time.Posix -> Maybe String -> List TouchLog -> Maybe Time.Posix
-checkTenSec posix maybeIdm logs =
-    case logs of
-        [] ->
-            Just posix
-        
-        _ ->
-            let
-                idm =
-                    Maybe.withDefault "" maybeIdm
+getLastIndex : Maybe String -> List TouchLog -> Int
+getLastIndex idm logs =
+    List.Extra.elemIndex (Maybe.withDefault "" idm) (List.map .idm logs)
+        |> Maybe.withDefault 0
 
-                lastTouchLogIndex = 
-                    List.Extra.elemIndex idm (List.map .idm logs)
-                        |> Maybe.withDefault 0
+getLastTouchLogbyIndex : Int -> List TouchLog ->TouchLog
+getLastTouchLogbyIndex index logs =
+    List.Extra.getAt index logs
+        |> Maybe.withDefault defaultTouchLog
 
-                lastTouchLog =
-                    List.Extra.getAt lastTouchLogIndex logs
-                        |> Maybe.withDefault defaultTouchLog
-
-                lastMillisecond =
-                    Just Time.posixToMillis
-                        |> Maybe.Extra.andMap lastTouchLog.posix
-                        |> Maybe.withDefault 0
-                
-                posixInInt =
-                    Time.posixToMillis posix
-                
-                checkDifferenceOfPosix =
-                    lastMillisecond - posixInInt
-
-                _ =
-                    Debug.log "lastMillisecond" lastMillisecond
-
-                _ =
-                    Debug.log "posixInInt" posixInInt
-
-                _ =
-                    Debug.log "checkDifferenceOfPosix" checkDifferenceOfPosix
-            in
-            if checkDifferenceOfPosix > 0 then (Just posix) else Nothing
+takeNsec : Time.Posix -> Maybe String -> Int -> List TouchLog -> Time.Posix
+takeNsec posix idm n logs = 
+    Just Time.posixToMillis
+        |> Maybe.Extra.andMap (getLastTouchLogbyIndex (getLastIndex idm logs) logs).posix
+        |> Maybe.map ((+) ( n * 1000))
+        |> Maybe.withDefault 0
+        |> Time.millisToPosix 
 
 
 
@@ -260,10 +237,27 @@ update msg model =
             let
                 _= Debug.log "model:" model
                 _= Debug.log "touch:" touch
-                
+
                 newTouchLog : String -> Time.Posix -> Time.Zone -> TouchLog
                 newTouchLog idm newPosix newZone = 
                     TouchLog idm (Just newPosix) (Just newZone)
+
+                checkSec : Maybe Time.Posix
+                checkSec =
+                    case model.logs of
+                        [] ->
+                            Just posix
+
+                        _ ->
+                            let
+                                plusNsec =
+                                    Time.posixToMillis (takeNsec posix touch.idm 10 model.logs)
+                                    
+                                posixInInt =
+                                    Time.posixToMillis posix
+                            in
+                            if (posixInInt - plusNsec) > 0 then (Just posix) else Nothing
+
             in
 
             ( { model
@@ -271,7 +265,7 @@ update msg model =
                 , logs =
                     Just newTouchLog
                         |> Maybe.Extra.andMap touch.idm
-                        |> Maybe.Extra.andMap (checkTenSec posix touch.idm model.logs )
+                        |> Maybe.Extra.andMap checkSec
                         |> Maybe.Extra.andMap (Just zone)
                         |> Maybe.map (appendLog model.logs)
                         |> Maybe.withDefault model.logs
@@ -398,9 +392,8 @@ view model =
                         , text <| "Exit : " ++ exitTimes model.logs ++ " times "
                         , text <| "Total Counts : " ++ totalTouchCounts model.logs ++ " times "
                         ]]
-        , div [] [ p [] [ text <| "Entred Numbers : " ++ entredNumbers model.logs ++ " times "
-                        , text <| "Exited Numbers : " ++ exitedNumbers model.logs ++ " times "]]
-        -- , div [] [ ul [] ( List.map viewTouchLog model.logs)]
+        , div [] [ p [] [ text <| "Entred People : " ++ entredNumbers model.logs ++ " times "
+                        , text <| "Exited People : " ++ exitedNumbers model.logs ++ " times "]]
         , div [] [ ul [] ( List.map viewLastFiveEnteredPeople (lastFiveEnteredPeople model.logs)) ]
         ]
 
