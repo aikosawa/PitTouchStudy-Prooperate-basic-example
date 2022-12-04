@@ -153,7 +153,6 @@ configFromSetting setting =
 
 -- 入室、退室数計算
 
--- groupEachIdm : List TouchLog -> Dict String Int
 groupEachIdm data =
     Dict.Extra.groupBy .idm data
         |> Dict.map (\_ v -> List.length v )
@@ -161,8 +160,7 @@ groupEachIdm data =
 @docs Dict [(idm, [{userTouchLog}])]
 @docs Dict [(idm, dataLength)]
 -}
-
--- transformToCounts : Dict String Int -> List (String, (Int, Int))      
+     
 transformToCounts data =
     Dict.map (\_ v -> (( v + 1 )//2, v//2)) data
 {-| 入退室カウント取得
@@ -192,23 +190,21 @@ getLastTouchLog logs =
     List.head logs
         |> Maybe.withDefault defaultTouchLog
 
-getLastIndex : Maybe String -> List TouchLog -> Int
-getLastIndex idm logs =
-    List.Extra.elemIndex (Maybe.withDefault "" idm) (List.map .idm logs)
-        |> Maybe.withDefault 0
-
-getLastTouchLogbyIndex : Int -> List TouchLog ->TouchLog
-getLastTouchLogbyIndex index logs =
-    List.Extra.getAt index logs
-        |> Maybe.withDefault defaultTouchLog
-
 takeNsec : Time.Posix -> Maybe String -> Int -> List TouchLog -> Time.Posix
 takeNsec posix idm n logs = 
     Just Time.posixToMillis
-        |> Maybe.Extra.andMap (getLastTouchLogbyIndex (getLastIndex idm logs) logs).posix
+        |> Maybe.Extra.andMap (getLastTouchLogbyIdm logs idm).posix
         |> Maybe.map ((+) ( n * 1000))
         |> Maybe.withDefault 0
         |> Time.millisToPosix 
+
+getLastTouchLogbyIdm : List TouchLog -> Maybe String -> TouchLog
+getLastTouchLogbyIdm logs idm =
+    Dict.Extra.groupBy .idm logs
+        |> Dict.get (Maybe.withDefault "" idm)
+        |> Maybe.withDefault logs
+        |> List.head
+        |> Maybe.withDefault defaultTouchLog
 
 
 
