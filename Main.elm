@@ -5,28 +5,29 @@ import Html exposing (Html, div, p, text, ul, li)
 import Html.Attributes exposing (id)
 import Http
 import Http.Tasks
-import Json.Decode as Json
+import Json.Decode
 import Hex
 import Hex.Convert
 import Bytes
 import Bytes.Decode
-import Maybe exposing (Maybe)
 import ProOperate
 import ProOperate.Card as Card
 import ProOperate.Config as Config exposing (Config_pro2, defaultConfig_pro2)
 import ProOperate.Touch as Touch exposing (TouchResponse)
 import Procedure
 import Procedure.Program
-import Result.Extra
+import Dict
+import Dict.Extra
+import Maybe exposing (Maybe)
 import Maybe.Extra
 import Task exposing (Task)
-import Dict exposing (Dict)
-import Dict.Extra
 import Task.Extra
+import Result.Extra
 import List.Extra
-import Time
+import Time exposing (ZoneName(..))
 import Time.Format
 import Time.Format.Config.Config_ja_jp
+import TimeZone
 
 
 type Error
@@ -37,11 +38,13 @@ type Error
 
 type alias Setting =
     { name : String
+    , waitLamp : String
     }
 
 
 
 -- MAIN
+
 
 main : Program Flags Model Msg
 main =
@@ -57,38 +60,42 @@ type Msg
     = ProcMsg (Procedure.Program.Msg Msg)
     | GotSetting Setting
     | OnError Error
-    | OnTouch TouchResponse Time.Zone Time.Posix
+    | OnTouch TouchResponse -- Time.Posix, Time.Zone の変換用分岐
+    | OnTouchWithTime TouchResponse (Maybe String) Int
 
 
 
 -- Application Model
 
+
 type alias Model =
     { procModel : Procedure.Program.Model Msg
     , config : Config_pro2
-    , touch : Maybe TouchResponse
-    , logs : List TouchLog
+    , history : List TouchData
     }
 
 
-type alias TouchLog =
-    { idm : String
-    , posix : Maybe Time.Posix
-    , zone : Maybe Time.Zone
+type alias TouchData =
+    { data : Maybe String   -- ICカードの残高
+    , idm : String
+    , zoneName : String
+    , millis : Int
     }
 
 
-userTouchLog =
-    { idm = ""
-    , posix = Nothing
-    , zone = Nothing
+userTouchData =
+    { data = Nothing
+    , idm = ""
+    , zoneName = ""
+    , millis = 0
     }
 
 
-defaultTouchLog =
-    { idm = ""
-    , posix = Nothing
-    , zone = Nothing
+defaultTouchData =
+    { data = Nothing
+    , idm = ""
+    , zoneName = ""
+    , millis = 0
     }
 
 
@@ -99,12 +106,12 @@ type alias Flags =
 
 -- FUNCTIONS
 
+
 init : Flags -> ( Model, Cmd Msg )
 init _ =
     ( { procModel = Procedure.Program.init
       , config = defaultConfig_pro2
-      , touch = Nothing
-      , logs = []
+      , history = []
       }
     , getProviderSettingCmd
     )
@@ -117,20 +124,21 @@ getProviderSetting =
         , resolver = Http.Tasks.resolveString
         }
         |> Task.mapError HttpError
-        |> Task.map (Json.decodeString settingDecoder)
-        |> Task.map (Result.mapError Json.errorToString)
+        |> Task.map (Json.Decode.decodeString settingDecoder)
+        |> Task.map (Result.mapError Json.Decode.errorToString)
         |> Task.andThen
             (Result.Extra.unpack (DecodeError >> Task.fail) Task.succeed)
 
 
-settingDecoder : Json.Decoder Setting
+settingDecoder : Json.Decode.Decoder Setting
 settingDecoder =
     let
         decoder =
-            Json.map Setting
-                (Json.field "name" Json.string)
+            Json.Decode.map2 Setting
+                (Json.Decode.field "name" Json.Decode.string)
+                (Json.Decode.field "waitLamp" Json.Decode.string)
     in
-    Json.field "settings" decoder
+    Json.Decode.field "settings" decoder
 
 
 getProviderSettingCmd : Cmd Msg
@@ -147,68 +155,50 @@ configFromSetting : Setting -> Config_pro2
 configFromSetting setting =
     defaultConfig_pro2
         |> (\r -> { r | felicaList = [ Card.sapica, Card.suica, Card.felica ] })
-        |> (\r -> { r | waitLamp = "WW1L" })
+        |> (\r -> { r | waitLamp = setting.waitLamp })
 
 
+-- TouchData 操作関数
 
--- 入室、退室数計算
+-- appendLog : List TouchData -> TouchData -> List TouchData
+-- appendLog data touchLog = 
+--     touchLog :: data
 
-groupEachIdm data =
+-- getLastTouchData : List TouchData -> TouchData
+getLastTouchData data = 
+    List.head data
+        |> Maybe.withDefault defaultTouchData
+
+-- takeNsec : Time.Posix -> Maybe String -> Int -> List TouchData -> Time.Posix
+-- takeNsec posix idm n logs = 
+--     Just Time.posixToMillis
+--         |> Maybe.Extra.andMap (getLastTouchDatabyIdm logs idm).posix
+--         |> Maybe.map ((+) ( n * 1000))
+--         |> Maybe.withDefault 0
+--         |> Time.millisToPosix 
+
+getLastTouchDatabyIdm : List TouchData -> Maybe String -> TouchData
+getLastTouchDatabyIdm data idm =
     Dict.Extra.groupBy .idm data
-        |> Dict.map (\_ v -> List.length v )
-{-| 
-@docs Dict [(idm, [{userTouchLog}])]
-@docs Dict [(idm, dataLength)]
--}
-     
-transformToCounts data =
-    Dict.map (\_ v -> (( v + 1 )//2, v//2)) data
-{-| 入退室カウント取得
-@docs Dict [(idm, (入室回数, 退室回数))]
- -}
-
-totalEntExiCount data =
-    Dict.values data
-        |> List.unzip
-        |> Tuple.mapBoth List.sum List.sum
-{-|
-@docs [(入室回数, 退室回数)]
-@docs ([入室回数], [退室回数])
-@docs (入室総数, 退室総数)
- -}
-
-
-
--- TouchLog 操作関数
-
-appendLog : List TouchLog -> TouchLog -> List TouchLog
-appendLog logs touchLog = 
-    touchLog :: logs
-
--- getLastTouchLog : List TouchLog -> TouchLog
-getLastTouchLog logs = 
-    List.head logs
-        |> Maybe.withDefault defaultTouchLog
-
-takeNsec : Time.Posix -> Maybe String -> Int -> List TouchLog -> Time.Posix
-takeNsec posix idm n logs = 
-    Just Time.posixToMillis
-        |> Maybe.Extra.andMap (getLastTouchLogbyIdm logs idm).posix
-        |> Maybe.map ((+) ( n * 1000))
-        |> Maybe.withDefault 0
-        |> Time.millisToPosix 
-
-getLastTouchLogbyIdm : List TouchLog -> Maybe String -> TouchLog
-getLastTouchLogbyIdm logs idm =
-    Dict.Extra.groupBy .idm logs
         |> Dict.get (Maybe.withDefault "" idm)
-        |> Maybe.withDefault logs
+        |> Maybe.withDefault data
         |> List.head
-        |> Maybe.withDefault defaultTouchLog
+        |> Maybe.withDefault defaultTouchData
 
 
 
 -- UPDATE
+
+
+filterHistoryByIdm : String -> List TouchData -> List TouchData
+filterHistoryByIdm idm =
+    List.filter (\a -> a.idm == idm)
+
+
+filterHistoryByMSec : Int -> List TouchData -> List TouchData
+filterHistoryByMSec millis =
+    List.filter (\a -> a.millis > millis)
+
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
@@ -229,45 +219,46 @@ update msg model =
         OnError err ->
             ( model, Cmd.none )
 
-        OnTouch touch zone posix ->
+        OnTouch touch ->
             let
-                _= Debug.log "model:" model
-                _= Debug.log "touch:" touch
+                andMap =
+                    Task.Extra.andMap
 
-                newTouchLog : String -> Time.Posix -> Time.Zone -> TouchLog
-                newTouchLog idm newPosix newZone = 
-                    TouchLog idm (Just newPosix) (Just newZone)
-
-                checkSec : Maybe Time.Posix
-                checkSec =
-                    case model.logs of
-                        [] ->
-                            Just posix
+                extractName zoneName =
+                    case zoneName of
+                        Name name ->
+                            Just name
 
                         _ ->
-                            let
-                                plusNsec =
-                                    Time.posixToMillis (takeNsec posix touch.idm 10 model.logs)
-                                    
-                                posixInInt =
-                                    Time.posixToMillis posix
-                            in
-                            if (posixInInt - plusNsec) > 0 then (Just posix) else Nothing
-
+                            Nothing
             in
+            ( model
+            , Task.succeed (OnTouchWithTime touch)
+                |> andMap (Task.map extractName Time.getZoneName)
+                |> andMap (Task.map Time.posixToMillis Time.now)
+                |> Task.perform identity
+            )
 
-            ( { model
-                | touch = Just touch
-                , logs =
-                    Just newTouchLog
+        OnTouchWithTime touch zoneName millis ->
+            let
+                validateTime ms =   -- 10秒はじく
+                    Maybe.map2 filterHistoryByIdm touch.idm (Just model.history)
+                        |> Maybe.map (filterHistoryByMSec (ms - 10 * 1000))
+                        |> Maybe.map (List.sortBy (.millis >> (-) ms))
+                        |> Maybe.andThen List.head
+                        |> Maybe.Extra.unwrap (Just millis) (always Nothing)
+
+                appendHistory newData = -- Log追加
+                    newData :: model.history
+
+                history =
+                    Just (TouchData touch.data)
                         |> Maybe.Extra.andMap touch.idm
-                        |> Maybe.Extra.andMap checkSec
-                        |> Maybe.Extra.andMap (Just zone)
-                        |> Maybe.map (appendLog model.logs)
-                        |> Maybe.withDefault model.logs
-                    
-                     
-                 }
+                        |> Maybe.Extra.andMap zoneName
+                        |> Maybe.Extra.andMap (validateTime millis)
+                        |> Maybe.Extra.unwrap model.history appendHistory
+            in
+            ( { model | history = history }
             , observeTouchCmd model.config
             )
 
@@ -284,59 +275,103 @@ update msg model =
 
 -- VIEW
 
+
+-- 入室、退室数計算
+groupEachIdm data =
+    Dict.Extra.groupBy .idm data
+        |> Dict.map (\_ v -> List.length v )
+{-| 
+@docs Dict [(idm, [{userTouchData}])]
+@docs Dict [(idm, dataLength)]
+-}
+     
+transformToCounts data =
+    Dict.map (\_ v -> (( v + 1 )//2, v//2)) data
+{-| 入退室カウント取得
+@docs Dict [(idm, (入室回数, 退室回数))]
+ -}
+
+totalEntExiCount data =
+    Dict.values data
+        |> List.unzip
+        |> Tuple.mapBoth List.sum List.sum
+{-|
+@docs [(入室回数, 退室回数)]
+@docs ([入室回数], [退室回数])
+@docs (入室総数, 退室総数)
+ -}
+
+
+formatTime : Maybe TouchData -> String
+formatTime data =
+    let
+        nameToZone zoneName =
+            Dict.get zoneName TimeZone.zones
+
+        touchToZone touchData =
+            Maybe.map .zoneName touchData
+                |> Maybe.andThen nameToZone
+                |> Maybe.map (\zone -> zone ())
+
+        touchToPosix touchData =
+            Maybe.map .millis touchData
+                |> Maybe.map Time.millisToPosix
+    in
+    Just Time.Format.format
+        |> Maybe.Extra.andMap (Just Time.Format.Config.Config_ja_jp.config)
+        |> Maybe.Extra.andMap (Just "%Y-%m-%d %H:%M:%S")
+        |> Maybe.Extra.andMap (touchToZone data)
+        |> Maybe.Extra.andMap (touchToPosix data)
+        |> Maybe.withDefault "--/--/-- 00:00:00"
+
+
 view : Model -> Html Msg
 view model =
     let
-        _= Debug.log "logs:" model.logs
+        lastTouch =
+            List.head model.history
 
         label =
-            Maybe.andThen .idm model.touch
+            lastTouch
+                |> Maybe.map .idm
                 |> Maybe.withDefault ""
-                |> text
 
         deposit =
-            model.touch
+            lastTouch
                 |> Maybe.andThen .data
                 |> Maybe.map (String.slice 20 24)
                 |> Maybe.andThen Hex.Convert.toBytes
                 |> Maybe.andThen (Bytes.Decode.decode (Bytes.Decode.unsignedInt16 Bytes.LE))
                 |> Maybe.withDefault 0
+        
 
-        formattedTime : List TouchLog -> String
-        formattedTime logs = 
-            Just Time.Format.format
-                |> Maybe.Extra.andMap (Just Time.Format.Config.Config_ja_jp.config)
-                |> Maybe.Extra.andMap (Just "%Y-%m-%d %H:%M:%S")
-                |> Maybe.Extra.andMap (getLastTouchLog logs).zone
-                |> Maybe.Extra.andMap (getLastTouchLog logs).posix
-                |> Maybe.withDefault ""
-
-        entryTimes : List TouchLog -> String
-        entryTimes logs = 
-            groupEachIdm logs
+        -- 入退室カウント表示用
+        entryTimes : List TouchData -> String
+        entryTimes data = 
+            groupEachIdm data
                 |> transformToCounts
-                |> Dict.get (getLastTouchLog logs).idm
+                |> Dict.get (getLastTouchData data).idm
                 |> Maybe.map Tuple.first
                 |> Maybe.withDefault 0
                 |> String.fromInt
 
-        exitTimes : List TouchLog -> String
-        exitTimes logs =
-            groupEachIdm logs
+        exitTimes : List TouchData -> String
+        exitTimes data =
+            groupEachIdm data
                 |> transformToCounts
-                |> Dict.get (getLastTouchLog logs).idm
+                |> Dict.get (getLastTouchData data).idm
                 |> Maybe.map Tuple.second
                 |> Maybe.withDefault 0
                 |> String.fromInt
 
-        totalTouchCounts : List TouchLog -> String
-        totalTouchCounts logs =
-            groupEachIdm logs
-                |> Dict.get (getLastTouchLog logs).idm
+        totalTouchCounts : List TouchData -> String
+        totalTouchCounts data =
+            groupEachIdm data
+                |> Dict.get (getLastTouchData data).idm
                 |> Maybe.withDefault 0
                 |> String.fromInt
 
-        entredNumbers : List TouchLog -> String
+        entredNumbers : List TouchData -> String
         entredNumbers logs =
             groupEachIdm logs
                 |> transformToCounts
@@ -344,30 +379,24 @@ view model =
                 |> Tuple.first
                 |> String.fromInt
 
-        exitedNumbers : List TouchLog -> String
-        exitedNumbers logs =
-            groupEachIdm logs
+        exitedNumbers : List TouchData -> String
+        exitedNumbers data =
+            groupEachIdm data
                 |> transformToCounts
                 |> totalEntExiCount
                 |> Tuple.second
                 |> String.fromInt
-        
-        viewTouchLog : TouchLog -> Html msg
-        viewTouchLog log =
-            let
-                time = 
-                    Just Time.Format.format
-                        |> Maybe.Extra.andMap (Just Time.Format.Config.Config_ja_jp.config)
-                        |> Maybe.Extra.andMap (Just "%Y-%m-%d %H:%M:%S")
-                        |> Maybe.Extra.andMap log.zone
-                        |> Maybe.Extra.andMap log.posix
-                        |> Maybe.withDefault ""
-            in
-            li [] [ text <| "IDM : " ++ log.idm ++ " TIME : " ++ time ]
 
-        lastFiveEnteredPeople : List TouchLog -> List String
-        lastFiveEnteredPeople logs =
-            List.reverse logs
+        viewTouchData : Maybe TouchData -> Html msg
+        viewTouchData maybeData =
+            let
+                data = Maybe.withDefault defaultTouchData maybeData
+            in
+            li [] [ text <| "IDM : " ++ data.idm ++ " TIME : " ++ (formatTime maybeData) ]
+
+        lastFiveEnteredPeople : List TouchData -> List String
+        lastFiveEnteredPeople data =
+            List.reverse data
                 |> groupEachIdm
                 |> Dict.toList
                 |> List.take 4
@@ -375,27 +404,27 @@ view model =
                 |> Tuple.first
 
         viewLastFiveEnteredPeople : String -> Html msg
-        viewLastFiveEnteredPeople log =
-            li [] [ text <| "IDM : " ++ log ]
-
+        viewLastFiveEnteredPeople data =
+            li [] [ text <| "IDM : " ++ data ]
     in
     div [ id "body" ]
         [ div [] [ p [] [ text "Main" ] ]
-        , div [] [ p [] [ label ] ]
-        , div [] [ p [] [ text <| "touch at : " ++ formattedTime model.logs ]]
-        , div [] [ p [] [ (text << String.fromInt) deposit ]]
-        , div [] [ p [] [ text <| "Enter : " ++ entryTimes model.logs ++ " times "
-                        , text <| "Exit : " ++ exitTimes model.logs ++ " times "
-                        , text <| "Total Counts : " ++ totalTouchCounts model.logs ++ " times "
+        , div [] [ p [] [ text label ] ]
+        , div [] [ p [] [ text <| formatTime lastTouch ] ]
+        , div [] [ p [] [ text <| String.fromInt deposit ] ]
+        , div [] [ p [] [ text <| "Enter : " ++ entryTimes model.history ++ " times "
+                        , text <| "Exit : " ++ exitTimes model.history ++ " times "
+                        , text <| "Total Counts : " ++ totalTouchCounts model.history ++ " times "
                         ]]
-        , div [] [ p [] [ text <| "Entred People : " ++ entredNumbers model.logs ++ " times "
-                        , text <| "Exited People : " ++ exitedNumbers model.logs ++ " times "]]
-        , div [] [ ul [] ( List.map viewLastFiveEnteredPeople (lastFiveEnteredPeople model.logs)) ]
+        , div [] [ p [] [ text <| "Entred People : " ++ entredNumbers model.history ++ " times "
+                        , text <| "Exited People : " ++ exitedNumbers model.history ++ " times "]]
+        , div [] [ ul [] ( List.map viewLastFiveEnteredPeople (lastFiveEnteredPeople model.history)) ]
         ]
 
 
 
 -- SUBSCRIPTIONS
+
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
@@ -413,7 +442,5 @@ observeTouchCmd config =
     in
     Procedure.provide OnTouch
         |> andMap (Touch.observeOnce_pro2 config)
-        |> andMap (Procedure.fromTask Time.here)
-        |> andMap (Procedure.fromTask Time.now)
         |> Procedure.try ProcMsg
             (Result.Extra.extract (OnError << ProOperateError))
