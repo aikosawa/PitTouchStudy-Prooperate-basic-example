@@ -159,23 +159,10 @@ configFromSetting setting =
 
 
 -- TouchData 操作関数
-
--- appendLog : List TouchData -> TouchData -> List TouchData
--- appendLog data touchLog = 
---     touchLog :: data
-
 -- getLastTouchData : List TouchData -> TouchData
 getLastTouchData data = 
     List.head data
         |> Maybe.withDefault defaultTouchData
-
--- takeNsec : Time.Posix -> Maybe String -> Int -> List TouchData -> Time.Posix
--- takeNsec posix idm n logs = 
---     Just Time.posixToMillis
---         |> Maybe.Extra.andMap (getLastTouchDatabyIdm logs idm).posix
---         |> Maybe.map ((+) ( n * 1000))
---         |> Maybe.withDefault 0
---         |> Time.millisToPosix 
 
 getLastTouchDatabyIdm : List TouchData -> Maybe String -> TouchData
 getLastTouchDatabyIdm data idm =
