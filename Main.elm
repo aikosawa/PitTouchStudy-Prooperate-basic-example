@@ -164,14 +164,6 @@ getLastTouchData data =
     List.head data
         |> Maybe.withDefault defaultTouchData
 
-getLastTouchDatabyIdm : List TouchData -> Maybe String -> TouchData
-getLastTouchDatabyIdm data idm =
-    Dict.Extra.groupBy .idm data
-        |> Dict.get (Maybe.withDefault "" idm)
-        |> Maybe.withDefault data
-        |> List.head
-        |> Maybe.withDefault defaultTouchData
-
 
 
 -- UPDATE
